@@ -1,0 +1,424 @@
+// Supermarket Plant — Materials Management System
+// Stack: Next.js + Prisma + Vercel Postgres (Neon)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // URLs configuradas en prisma.config.ts (Prisma 7+)
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum AreaCode {
+  PRODUCCION
+  LOGISTICA
+  APQ
+  MONTAJE
+}
+
+enum OFStatus {
+  PLANIFICADA
+  LANZADA
+  EN_CURSO
+  COMPLETADA
+  CERRADA
+  CANCELADA
+}
+
+enum ComponentStatus {
+  PENDIENTE
+  VERIFICADO
+  SOLICITADO
+  PARCIALMENTE_SERVIDO
+  SERVIDO
+  CONSUMIDO
+  FALTANTE
+}
+
+enum ComponentOrigin {
+  LISTA_MATERIALES
+  ADICIONAL
+  UTILLAJE
+}
+
+enum RequestStatus {
+  BORRADOR
+  ENVIADA
+  EN_PROCESO
+  PARCIALMENTE_SERVIDA
+  COMPLETADA
+  CANCELADA
+}
+
+enum LineStatus {
+  ENVIADA
+  EN_PROCESO
+  PARCIALMENTE_SERVIDA
+  COMPLETADA
+  CANCELADA
+}
+
+enum MovementType {
+  TRASPASO
+  CONSUMO
+  AJUSTE
+  RECEPCION
+  DEVOLUCION
+}
+
+enum ProductType {
+  COMPONENTE
+  MATERIA_PRIMA
+  UTILLAJE
+  SEMIELABORADO
+}
+
+enum RequestPriority {
+  URGENTE
+  ALTA
+  NORMAL
+  BAJA
+}
+
+// ─────────────────────────────────────────────
+// CATÁLOGO MAESTRO
+// ─────────────────────────────────────────────
+
+model Uom {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(10)
+  description String   @db.VarChar(100)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  products Product[]
+
+  @@map("uom")
+}
+
+model Area {
+  id          Int      @id @default(autoincrement())
+  code        AreaCode @unique
+  description String   @db.VarChar(100)
+  active      Boolean  @default(true)
+
+  locations        Location[]
+  users            AppUser[]
+  materialRequests MaterialRequest[]
+
+  @@map("area")
+}
+
+model WorkCenter {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(20)
+  description String   @db.VarChar(200)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  machineCenters MachineCenter[]
+
+  @@map("work_center")
+}
+
+model MachineCenter {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique @db.VarChar(20)
+  description  String   @db.VarChar(200)
+  workCenterId Int      @map("work_center_id")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workCenter          WorkCenter           @relation(fields: [workCenterId], references: [id])
+  manufacturingOrders ManufacturingOrder[]
+
+  @@map("machine_center")
+}
+
+model Location {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(20)
+  description String   @db.VarChar(200)
+  areaId      Int?     @map("area_id")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  area             Area?           @relation(fields: [areaId], references: [id])
+  stockBalances    StockBalance[]
+  movementsFrom    StockMovement[] @relation("MovementFrom")
+  movementsTo      StockMovement[] @relation("MovementTo")
+  ofComponents     OFComponent[]
+  requestLinesFrom RequestLine[]   @relation("ReqLineFrom")
+  requestLinesTo   RequestLine[]   @relation("ReqLineTo")
+
+  @@map("location")
+}
+
+model Product {
+  id          Int         @id @default(autoincrement())
+  code        String      @unique @db.VarChar(30)
+  description String      @db.VarChar(300)
+  uomId       Int         @map("uom_id")
+  productType ProductType @default(COMPONENTE) @map("product_type")
+  active      Boolean     @default(true)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  uom           Uom             @relation(fields: [uomId], references: [id])
+  stockBalances StockBalance[]
+  movements     StockMovement[]
+  ofComponents  OFComponent[]
+
+  @@map("product")
+}
+
+// ─────────────────────────────────────────────
+// USUARIOS
+// ─────────────────────────────────────────────
+
+model AppUser {
+  id         Int      @id @default(autoincrement())
+  externalId String?  @unique @map("external_id") @db.VarChar(200)
+  email      String   @unique @db.VarChar(200)
+  name       String   @db.VarChar(200)
+  areaId     Int?     @map("area_id")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  area                 Area?               @relation(fields: [areaId], references: [id])
+  stockMovements       StockMovement[]
+  ordersCreated        ManufacturingOrder[] @relation("OrderCreatedBy")
+  ordersUpdated        ManufacturingOrder[] @relation("OrderUpdatedBy")
+  componentsCreated    OFComponent[]       @relation("ComponentCreatedBy")
+  componentsUpdated    OFComponent[]       @relation("ComponentUpdatedBy")
+  componentsVerified   OFComponent[]       @relation("ComponentVerifiedBy")
+  requestsCreated      MaterialRequest[]   @relation("RequestCreatedBy")
+  requestsUpdated      MaterialRequest[]   @relation("RequestUpdatedBy")
+  requestLinesServed   RequestLine[]
+  shortagesDetected    ComponentShortage[] @relation("ShortageDetectedBy")
+  shortagesResolved    ComponentShortage[] @relation("ShortageResolvedBy")
+  auditLogs            AuditLog[]
+
+  @@map("app_user")
+}
+
+// ─────────────────────────────────────────────
+// STOCK
+// ─────────────────────────────────────────────
+
+model StockBalance {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  locationId   Int      @map("location_id")
+  qtyAvailable Decimal  @default(0) @map("qty_available") @db.Decimal(18, 4)
+  qtyReserved  Decimal  @default(0) @map("qty_reserved") @db.Decimal(18, 4)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([productId, locationId])
+  @@index([productId])
+  @@index([locationId])
+  @@map("stock_balance")
+}
+
+model StockMovement {
+  id               BigInt        @id @default(autoincrement())
+  movementType     MovementType  @map("movement_type")
+  productId        Int           @map("product_id")
+  fromLocationId   Int?          @map("from_location_id")
+  toLocationId     Int?          @map("to_location_id")
+  qty              Decimal       @db.Decimal(18, 4)
+  refOfComponentId Int?          @map("ref_of_component_id")
+  refRequestLineId Int?          @map("ref_request_line_id")
+  userId           Int           @map("user_id")
+  notes            String?       @db.Text
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  product      Product      @relation(fields: [productId], references: [id])
+  fromLocation Location?    @relation("MovementFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location?    @relation("MovementTo", fields: [toLocationId], references: [id])
+  refComponent OFComponent? @relation(fields: [refOfComponentId], references: [id])
+  refLine      RequestLine? @relation(fields: [refRequestLineId], references: [id])
+  user         AppUser      @relation(fields: [userId], references: [id])
+
+  @@index([productId])
+  @@index([createdAt(sort: Desc)])
+  @@index([refOfComponentId])
+  @@index([refRequestLineId])
+  @@map("stock_movement")
+}
+
+// ─────────────────────────────────────────────
+// ÓRDENES DE FABRICACIÓN
+// ─────────────────────────────────────────────
+
+model ManufacturingOrder {
+  id              Int       @id @default(autoincrement())
+  ofNumber        String    @unique @map("of_number") @db.VarChar(30)
+  description     String?   @db.VarChar(300)
+  machineCenterId Int       @map("machine_center_id")
+  status          OFStatus  @default(PLANIFICADA)
+  plannedStartAt  DateTime  @map("planned_start_at")
+  plannedEndAt    DateTime? @map("planned_end_at")
+  actualStartAt   DateTime? @map("actual_start_at")
+  actualEndAt     DateTime? @map("actual_end_at")
+  createdBy       Int       @map("created_by")
+  updatedBy       Int?      @map("updated_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  machineCenter    MachineCenter     @relation(fields: [machineCenterId], references: [id])
+  createdByUser    AppUser           @relation("OrderCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser    AppUser?          @relation("OrderUpdatedBy", fields: [updatedBy], references: [id])
+  components       OFComponent[]
+  materialRequests MaterialRequest[]
+
+  @@index([status])
+  @@index([machineCenterId])
+  @@index([plannedStartAt])
+  @@map("manufacturing_order")
+}
+
+model OFComponent {
+  id                   Int             @id @default(autoincrement())
+  manufacturingOrderId Int             @map("manufacturing_order_id")
+  productId            Int             @map("product_id")
+  origin               ComponentOrigin @default(LISTA_MATERIALES)
+  qtyRequired          Decimal         @map("qty_required") @db.Decimal(18, 4)
+  qtyInProduction      Decimal         @default(0) @map("qty_in_production") @db.Decimal(18, 4)
+  qtyServed            Decimal         @default(0) @map("qty_served") @db.Decimal(18, 4)
+  qtyConsumed          Decimal         @default(0) @map("qty_consumed") @db.Decimal(18, 4)
+  status               ComponentStatus @default(PENDIENTE)
+  locationId           Int?            @map("location_id")
+  verifiedBy           Int?            @map("verified_by")
+  verifiedAt           DateTime?       @map("verified_at")
+  notes                String?         @db.Text
+  createdBy            Int             @map("created_by")
+  updatedBy            Int?            @map("updated_by")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  manufacturingOrder ManufacturingOrder  @relation(fields: [manufacturingOrderId], references: [id])
+  product            Product             @relation(fields: [productId], references: [id])
+  location           Location?           @relation(fields: [locationId], references: [id])
+  verifiedByUser     AppUser?            @relation("ComponentVerifiedBy", fields: [verifiedBy], references: [id])
+  createdByUser      AppUser             @relation("ComponentCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser      AppUser?            @relation("ComponentUpdatedBy", fields: [updatedBy], references: [id])
+  requestLines       RequestLine[]
+  stockMovements     StockMovement[]
+  shortages          ComponentShortage[]
+
+  @@index([manufacturingOrderId])
+  @@index([productId])
+  @@index([status])
+  @@map("of_component")
+}
+
+// ─────────────────────────────────────────────
+// FALTANTES
+// ─────────────────────────────────────────────
+
+model ComponentShortage {
+  id            Int       @id @default(autoincrement())
+  ofComponentId Int       @map("of_component_id")
+  qtyShortage   Decimal   @map("qty_shortage") @db.Decimal(18, 4)
+  detectedAt    DateTime  @default(now()) @map("detected_at")
+  detectedBy    Int       @map("detected_by")
+  resolvedAt    DateTime? @map("resolved_at")
+  resolvedBy    Int?      @map("resolved_by")
+  notes         String?   @db.Text
+
+  ofComponent    OFComponent @relation(fields: [ofComponentId], references: [id])
+  detectedByUser AppUser     @relation("ShortageDetectedBy", fields: [detectedBy], references: [id])
+  resolvedByUser AppUser?    @relation("ShortageResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@index([ofComponentId])
+  @@index([resolvedAt])
+  @@map("component_shortage")
+}
+
+// ─────────────────────────────────────────────
+// SOLICITUDES DE MATERIAL
+// ─────────────────────────────────────────────
+
+model MaterialRequest {
+  id                   Int             @id @default(autoincrement())
+  requestNumber        String          @unique @map("request_number") @db.VarChar(30)
+  manufacturingOrderId Int             @map("manufacturing_order_id")
+  destinationAreaId    Int             @map("destination_area_id")
+  status               RequestStatus   @default(BORRADOR)
+  priority             RequestPriority @default(NORMAL)
+  notes                String?         @db.Text
+  createdBy            Int             @map("created_by")
+  updatedBy            Int?            @map("updated_by")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  sentAt               DateTime?       @map("sent_at")
+  completedAt          DateTime?       @map("completed_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  manufacturingOrder ManufacturingOrder @relation(fields: [manufacturingOrderId], references: [id])
+  destinationArea    Area               @relation(fields: [destinationAreaId], references: [id])
+  createdByUser      AppUser            @relation("RequestCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser      AppUser?           @relation("RequestUpdatedBy", fields: [updatedBy], references: [id])
+  lines              RequestLine[]
+
+  @@index([manufacturingOrderId])
+  @@index([destinationAreaId])
+  @@index([status])
+  @@map("material_request")
+}
+
+model RequestLine {
+  id                Int        @id @default(autoincrement())
+  materialRequestId Int        @map("material_request_id")
+  ofComponentId     Int        @map("of_component_id")
+  qtyRequested      Decimal    @map("qty_requested") @db.Decimal(18, 4)
+  qtyServed         Decimal    @default(0) @map("qty_served") @db.Decimal(18, 4)
+  fromLocationId    Int?       @map("from_location_id")
+  toLocationId      Int?       @map("to_location_id")
+  status            LineStatus @default(ENVIADA)
+  servedBy          Int?       @map("served_by")
+  servedAt          DateTime?  @map("served_at")
+  notes             String?    @db.Text
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  materialRequest MaterialRequest @relation(fields: [materialRequestId], references: [id])
+  ofComponent     OFComponent     @relation(fields: [ofComponentId], references: [id])
+  fromLocation    Location?       @relation("ReqLineFrom", fields: [fromLocationId], references: [id])
+  toLocation      Location?       @relation("ReqLineTo", fields: [toLocationId], references: [id])
+  servedByUser    AppUser?        @relation(fields: [servedBy], references: [id])
+  stockMovements  StockMovement[]
+
+  @@index([materialRequestId])
+  @@index([ofComponentId])
+  @@map("request_line")
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   BigInt   @map("entity_id")
+  action     String   @db.VarChar(50)
+  oldValues  Json?    @map("old_values")
+  newValues  Json?    @map("new_values")
+  userId     Int      @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user AppUser @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_log")
+}
