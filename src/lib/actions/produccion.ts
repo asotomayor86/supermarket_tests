@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const DEMO_USER = "produccion1@planta.com";
@@ -14,6 +16,43 @@ async function getUser() {
 async function nextRequestNumber(): Promise<string> {
   const last = await prisma.materialRequest.findFirst({ orderBy: { id: "desc" }, select: { id: true } });
   return `SOL-${String((last?.id ?? 0) + 1).padStart(6, "0")}`;
+}
+
+async function nextOFNumber(): Promise<string> {
+  const last = await prisma.manufacturingOrder.findFirst({ orderBy: { id: "desc" }, select: { id: true } });
+  return `OF-${String((last?.id ?? 0) + 1).padStart(6, "0")}`;
+}
+
+export async function crearOrden(formData: FormData) {
+  const targetProductId = Number(formData.get("targetProductId"));
+  const qtyPlanned      = Number(formData.get("qtyPlanned"));
+  const machineCenterId = Number(formData.get("machineCenterId"));
+  const plannedStartAt  = new Date(formData.get("plannedStartAt") as string);
+  const plannedEndAtStr = formData.get("plannedEndAt") as string;
+  const notes           = (formData.get("notes") as string).trim();
+  const user            = await getUser();
+
+  const product  = await prisma.product.findUnique({ where: { id: targetProductId }, include: { uom: true } });
+  const ofNumber = await nextOFNumber();
+
+  const description = notes || `${product?.description ?? "—"} × ${qtyPlanned} ${product?.uom.code ?? ""}`;
+
+  const data: Prisma.ManufacturingOrderUncheckedCreateInput = {
+    ofNumber,
+    description,
+    machineCenterId,
+    targetProductId,
+    qtyPlanned,
+    plannedStartAt,
+    plannedEndAt: plannedEndAtStr ? new Date(plannedEndAtStr) : undefined,
+    status:       "PLANIFICADA",
+    createdBy:    user.id,
+  };
+
+  const of = await prisma.manufacturingOrder.create({ data });
+
+  revalidatePath("/produccion");
+  redirect(`/produccion/${of.id}`);
 }
 
 export async function verificarComponente(formData: FormData) {

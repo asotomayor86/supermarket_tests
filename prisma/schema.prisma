@@ -169,10 +169,11 @@ model Product {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  uom           Uom             @relation(fields: [uomId], references: [id])
-  stockBalances StockBalance[]
-  movements     StockMovement[]
-  ofComponents  OFComponent[]
+  uom                 Uom                  @relation(fields: [uomId], references: [id])
+  stockBalances       StockBalance[]
+  movements           StockMovement[]
+  ofComponents        OFComponent[]
+  manufacturingOrders ManufacturingOrder[]
 
   @@map("product")
 }
@@ -260,21 +261,24 @@ model StockMovement {
 // ─────────────────────────────────────────────
 
 model ManufacturingOrder {
-  id              Int       @id @default(autoincrement())
-  ofNumber        String    @unique @map("of_number") @db.VarChar(30)
-  description     String?   @db.VarChar(300)
-  machineCenterId Int       @map("machine_center_id")
-  status          OFStatus  @default(PLANIFICADA)
-  plannedStartAt  DateTime  @map("planned_start_at")
-  plannedEndAt    DateTime? @map("planned_end_at")
-  actualStartAt   DateTime? @map("actual_start_at")
-  actualEndAt     DateTime? @map("actual_end_at")
-  createdBy       Int       @map("created_by")
-  updatedBy       Int?      @map("updated_by")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id                Int       @id @default(autoincrement())
+  ofNumber          String    @unique @map("of_number") @db.VarChar(30)
+  description       String?   @db.VarChar(300)
+  machineCenterId   Int       @map("machine_center_id")
+  targetProductId   Int?      @map("target_product_id")
+  qtyPlanned        Decimal?  @map("qty_planned") @db.Decimal(18, 4)
+  status            OFStatus  @default(PLANIFICADA)
+  plannedStartAt    DateTime  @map("planned_start_at")
+  plannedEndAt      DateTime? @map("planned_end_at")
+  actualStartAt     DateTime? @map("actual_start_at")
+  actualEndAt       DateTime? @map("actual_end_at")
+  createdBy         Int       @map("created_by")
+  updatedBy         Int?      @map("updated_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   machineCenter    MachineCenter     @relation(fields: [machineCenterId], references: [id])
+  targetProduct    Product?          @relation(fields: [targetProductId], references: [id])
   createdByUser    AppUser           @relation("OrderCreatedBy", fields: [createdBy], references: [id])
   updatedByUser    AppUser?          @relation("OrderUpdatedBy", fields: [updatedBy], references: [id])
   components       OFComponent[]

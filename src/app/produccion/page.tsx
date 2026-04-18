@@ -48,10 +48,19 @@ export default async function ProduccionPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
           </svg>
         </Link>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-semibold text-gray-900">Producción</h1>
           <p className="text-sm text-gray-500">Órdenes de fabricación activas</p>
         </div>
+        <Link
+          href="/produccion/nueva"
+          className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          Nueva OF
+        </Link>
       </header>
 
       <main className="flex-1 p-6">
